@@ -132,9 +132,9 @@ void SysTick_Handler(void) {
 }
 
 
-void blink_N(int n)
+void blink_N()
 {
- for(i=0;i<n;i++)
+ for(i=0;i<5;i++)
  {
     set_HIGH(29); // make P1.18 low
     _delay( 1 << 22 );

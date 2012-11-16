@@ -41,8 +41,6 @@
 
 #include <stdio.h> /* For printf() */
 #include "LPC17xx.h"
-#include "system_LPC17xx.h"
-#include "core_cm3.h"
 
 volatile uint32_t temp;
 
@@ -76,72 +74,55 @@ void set_LOW(uint32_t led)
 	LPC_GPIO1->FIOPIN &= ~( 1 << led ); // make P1.led low
 }
 
-/*
-volatile uint32_t sys_ticks; 
-void SysTick_Handler(void)__attribute__((weak));
-
-void SysTick_Handler(void) 
-{
-    ++sys_ticks;
-    set_HIGH(29);
-}
-
-void sleep(uint32_t ms) 
-{
-    uint32_t curr_ticks = sys_ticks;
-    while ((sys_ticks - curr_ticks) < ms);
-}
-
-*/
-
-
-static void SysTick_init(void) {
-    /* The upper limit of SysTick
-     *
-     * Since the MCU clock will be equal to internal RC (assumming the PLL is not
-     * activated), 4000000 value will generate 1s interrupt
-     *
-     * The value is counted at 1 (not zero). Hence -1 offset is introduced
-     */
-    SysTick->LOAD = (4000000 - 1);
-    SysTick->LOAD = SystemCoreClock/100 - 1;
-    /* SysTick control register
-     *
-     * SYSTICK_CLKSOURCE = 1 means the timer will use CPU (core)'s clock
-     * SYSTICK_TICKINT = 1 means the SysTick interrupt is activated on NVIC
-     * SYSTICK_ENABLE = 1 means enable SysTick
-     */
-    SysTick->CTRL = (1 << SYSTICK_CLKSOURCE) | (1<<SYSTICK_TICKINT) | (1 << SYSTICK_ENABLE);
-}
-
-volatile unsigned long timeval;
-void SysTick_Handler(void)__attribute__((weak));
-
-void delay_systick(unsigned long tick)
-{
-  timeval = 0;
-
-  while(timeval != tick) {
-    __WFI();
-  }
-}
-
-void SysTick_Handler(void) {
-  timeval++;
-  //now++;
-}
-
-
-void blink_N(int n)
+void blink_N(int n,int delay_ms)
 {
  for(i=0;i<n;i++)
  {
     set_HIGH(29); // make P1.18 low
-    _delay( 1 << 22 );
+    delayMs(0, delay_ms);
     set_LOW(29); // make P1.29 high
-    _delay( 1 << 22 );
+    delayMs(0, delay_ms);
  }
 }
+
+
+/*
+* In the system_lpc17xx.c file PCLKSEL0 have been set as 0x00000000 i.e.
+* peripheral clock selection for timer 0 will be CCLK/4
+* 72 / 4= 18MHz
+* 
+* 
+* 
+*/
+void delayMs(uint8_t timer_num, uint32_t delayInMs)
+{
+  if ( timer_num == 0 )/* timer 0 */
+  {
+        LPC_TIM0->TCR = 0x02;                /* reset timer */
+        LPC_TIM0->PR  = 0x00;                /* set prescaler to zero */
+        LPC_TIM0->MR0 = delayInMs * (24000000/1000-1);//(9000000 / 1000-1);
+        LPC_TIM0->IR  = 0xff;                /* reset all interrrupts */
+        LPC_TIM0->MCR = 0x04;                /* stop timer on match */
+        LPC_TIM0->TCR = 0x01;                /* start timer */
+
+        /* wait until delay time has elapsed */
+        while (LPC_TIM0->TCR & 0x01);
+  }
+  else if ( timer_num == 1 )/* timer 1 */
+  {
+        LPC_TIM1->TCR = 0x02;                /* reset timer */
+        LPC_TIM1->PR  = 0x00;                /* set prescaler to zero */
+        LPC_TIM1->MR0 = delayInMs * (24000000/1000-1);//(9000000 / 1000-1);
+        LPC_TIM1->IR  = 0xff;                /* reset all interrrupts */
+        LPC_TIM1->MCR = 0x04;                /* stop timer on match */
+        LPC_TIM1->TCR = 0x01;                /* start timer */
+
+        /* wait until delay time has elapsed */
+        while (LPC_TIM1->TCR & 0x01);
+  }
+  return;
+}
+
 
 /*---------------------------------------------------------------------------*/
 PROCESS(hello_world_process, "Hello world process");
@@ -153,33 +134,15 @@ PROCESS_THREAD(hello_world_process, ev, data)
 
   set_LEDS();
 
-  //while (1) {
-
-    
-    //set_LOW(29); // make P1.29 high
-    //_delay( 1 << 20 );
-
-    /*Setup SysTick to interrupt every 1 ms*/
-    //SysTick_Config((SystemCoreClock / 1000) * 10000 - 1);
-
-    //set_HIGH(29); // make P1.18 low
-
-    //_delay( 1 << 20 );
-    //set_HIGH(29);
-    
-   /*Setup SysTick to interrupt every 1 ms*/
-    //SysTick_Config((SystemCoreClock / 1000) * 500 - 1);
-
-/*
-    set_HIGH(18); // make P1.18 high
-    _delay( 1 << 20 );
-    set_LOW(29); // make P1.29 low
-    _delay( 1 << 20 );
-*/
-
+  //blink_N(3,2000);
+    set_HIGH(29); // make P1.18 low
+    delayMs(0, 30000);
+    set_LOW(29); // make P1.29 high
+  
+  while (1) {
+   
     //printf("Hello, world\n");
-
-  //}
+  }
   
   PROCESS_END();
 }
