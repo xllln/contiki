@@ -41,175 +41,91 @@
 /*---------------------------------------------------------------------------*/
 
 
-#include PLATFORM_HEADER
-#include "hal/error.h"
-#include "hal/hal.h"
-#include BOARD_HEADER
-#include "micro/adc.h"
+
 
 #include <stdio.h>
-
+#include <string.h>
 
 #include "contiki.h"
+#include <sys/process.h>
+#include <sys/procinit.h>
+#include <sys/etimer.h>
+#include <sys/autostart.h>
+#include <sys/clock.h>
 
 #include "LPC17xx.h"
+#include "init/config.h"
 #include "uart/uart.h"
-
-#include "dev/watchdog.h"
 #include "dev/leds.h"
-#include "dev/button-sensor.h"
-#include "dev/temperature-sensor.h"
-#include "dev/acc-sensor.h"
-#include "dev/uart1.h"
-#include "dev/serial-line.h"
-
-#include "dev/stm32w-radio.h"
-#include "net/netstack.h"
-#include "net/rime/rimeaddr.h"
-#include "net/rime.h"
-#include "net/rime/rime-udp.h"
-#include "net/uip.h"
-#define DEBUG 1
-#if DEBUG
-#include <stdio.h>
-#define PRINTF(...) printf(__VA_ARGS__)
-#define PRINT6ADDR(addr) PRINTF(" %02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x ", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], ((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], ((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15])
-#define PRINTLLADDR(lladdr) PRINTF(" %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x ",lladdr.u8[0], lladdr.u8[1], lladdr.u8[2], lladdr.u8[3],lladdr.u8[4], lladdr.u8[5], lladdr.u8[6], lladdr.u8[7])
-#else
-#define PRINTF(...)
-#define PRINT6ADDR(addr)
-#define PRINTLLADDR(addr)
-#endif
+#include "lpc17xx_uart.h"
 
 
-#if UIP_CONF_IPV6
-PROCINIT(&tcpip_process, &sensors_process);
-#else
-PROCINIT(&sensors_process);
-#warning "No TCP/IP process!"
-#endif
+unsigned int idle_count = 0;
 
-SENSORS(&button_sensor,&temperature_sensor,&acc_sensor);
-
-/*---------------------------------------------------------------------------*/
-static void
-set_rime_addr(void)
+caddr_t _sbrk ( int incr )
 {
-  int i;
-  union {
-    uint8_t u8[8];
-  }eui64;
-
-  //rimeaddr_t lladdr;
-
-  int8u *stm32w_eui64 = ST_RadioGetEui64();
-  {
-          int8u c;
-          for(c = 0; c < 8; c++) {      // Copy the EUI-64 to lladdr converting from Little-Endian to Big-Endian.
-                  eui64.u8[c] = stm32w_eui64[7 - c];
-          }
-  }
-
-#if UIP_CONF_IPV6
-  memcpy(&uip_lladdr.addr, &eui64, sizeof(uip_lladdr.addr));
-#endif
-
-#if UIP_CONF_IPV6
-  rimeaddr_set_node_addr((rimeaddr_t *)&eui64);
-#else
-  rimeaddr_set_node_addr((rimeaddr_t *)&eui64.u8[8-RIMEADDR_SIZE]);
-#endif
-
-  printf("Rime started with address ");
-  for(i = 0; i < sizeof(rimeaddr_t) - 1; i++) {
-    printf("%d.", rimeaddr_node_addr.u8[i]);
-  }
-  printf("%d\n", rimeaddr_node_addr.u8[i]);
-
+    return NULL;
 }
+int _close(int file) { return -1; }
+int _fstat(int file, struct stat *st) {
+ //st->st_mode = S_IFCHR;
+ return 0;
+}
+int _isatty(int file) { return 1; }
+int _lseek(int file, int ptr, int dir) { return 0; }
+int _open(const char *name, int flags, int mode) { return -1; }
+int _read(int file, char *ptr, int len) {
+/* int todo;
+ if(len == 0)
+  return 0;
+ while(UART_FR(UART0_ADDR) & UART_FR_RXFE);
+ *ptr++ = UART_DR(UART0_ADDR);
+ for(todo = 1; todo < len; todo++) {
+  if(UART_FR(UART0_ADDR) & UART_FR_RXFE) {
+   break;
+ }
+ *ptr++ = UART_DR(UART0_ADDR);
+ }
+ return todo;*/
+return 0;
+}
+int _write(int file, char *ptr, int len) {
+/* int todo;
+ for (todo = 0; todo < len; todo++) {
+  UART_DR(UART0_ADDR) = *ptr++;
+ }
+ return len;*/
+return 0;
+ }
+
+
 /*---------------------------------------------------------------------------*/
 int
 main(void)
 {
-
-  /*
-   * Initialize the lpc17xx hardware
-   */
+  /* Initialize the lpc17xx hardware */
   SystemInit();
-  UART0_init();
-
-  /*
-   * Initialize Contiki and our processes.
-   */
-
+  GPIOInit();
+  TimerInit();
+  ValueInit();
+  ADCInit();
+  comm_init();
+  set_echo();
+  leds_init();
+  clock_init();
+  
+  /* Initialize Contiki and our processes.*/
   process_init();
   process_start(&etimer_process, NULL);
   autostart_start(autostart_processes);
 
   while(1){
-
     int r;
-
     do {
       r = process_run();
     } while(r > 0);
-
   }
 
 }
 
 
-
-/*int8u errcode __attribute__(( section(".noinit") ));
-
-void halBaseBandIsr(){
-
-  errcode = 1;
-  leds_on(LEDS_RED);
-}
-
-void BusFault_Handler(){
-
-  errcode = 2;
-  leds_on(LEDS_RED);
-}
-
-void halDebugIsr(){
-
-  errcode = 3;
-  leds_on(LEDS_RED);
-}
-
-void DebugMon_Handler(){
-
-  errcode = 4;
-  //leds_on(LEDS_RED);
-}
-
-void HardFault_Handler(){
-
-  errcode = 5;
-  //leds_on(LEDS_RED);
-  //halReboot();
-}
-
-void MemManage_Handler(){
-
-  errcode = 6;
-  //leds_on(LEDS_RED);
-  //halReboot();
-}
-
-void UsageFault_Handler(){
-
-  errcode = 7;
-  //leds_on(LEDS_RED);
-  //halReboot();
-}*/
-
-void Default_Handler()
-{
-  //errcode = 8;
-  leds_on(LEDS_RED);
-  halReboot();
-}

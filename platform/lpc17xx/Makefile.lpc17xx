@@ -1,24 +1,23 @@
 
+# Master clock frequency
+MCK=48000000
+CFLAGS+=-DAUTOSTART_ENABLE -DMCK=48000000
 
-ARCH= irq.c sensors.c acc-sensor.c button-sensor.c temperature-sensor.c mems.c adc_lpc17xx.c bang.c comm.c commands.c control.c uart.c utils.c system_LPC17xx.c
+ARCH=  adc_lpc17xx.c bang.c comm.c commands.c control.c utils.c system_LPC17xx.c leds-arch.c uart.c rprintf.c
 
-CONTIKI_TARGET_DIRS = . dev adc bang comm control init uart utils 
+CONTIKI_TARGET_DIRS = .  adc bang comm control init uart utils 
 ifndef CONTIKI_TARGET_MAIN
-CONTIKI_TARGET_MAIN = contiki-main.c led.c button.c board.c board-mbxxx.c
+CONTIKI_TARGET_MAIN = contiki-main.c 
 endif
 
-ifdef UIP_CONF_IPV6
-CFLAGS += -DWITH_UIP6=1
-endif
+
 
 CONTIKI_TARGET_SOURCEFILES += $(ARCH) $(CONTIKI_TARGET_MAIN)
 
-MCU=lpc17xx
-include $(CONTIKI)/cpu/lpc17xx/Makefile.lpc17xx
+#MCU=lpc17xx
+#MCU=lpc1768
+#include $(CONTIKI)/cpu/lpc17xx/Makefile.lpc17xx
+include $(CONTIKI)/cpu/arm/lpc1768/Makefile.lpc1768
 
-SERIALDUMP = $(CONTIKI)/tools/stm32w/serialdump-linux
 
-ifeq ($(HOST_OS),Windows)
-  SERIALDUMP = $(CONTIKI)/tools/stm32w/serialdump-windows
-endif
 

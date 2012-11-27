@@ -1,8 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-//#include "../minne3ctrlr.h"
-#include "LPC17xx.h"
+#include "contiki-conf.h"
 #include "comm.h"
 #include "commands.h"
 //#include "../pwm/pwm.h"
@@ -44,24 +43,14 @@ void comm_init()
  * Prints non-formatted NULL-terminated string to console.
  */
 uint8_t printchar(const char *charBuf) {
-	/* Because UART0_IRQHandler does not work in contiki, we just print string to UART0 interupt register THR */ 
-	uint16_t i = 0;
-	while (charBuf[i] != '\0')
-	{
-		LPC_UART0->THR = charBuf[i];
-		i++;
-	}
-	
-	return 0;
-
-	//return uart_tx_std_write((char*)charBuf);
+	return uart_tx_std_write((char*)charBuf);
 }
 
 void print(const char *charBuf) {
 	if(echo==0)
 	{
-		//printchar("\033");
-		//printchar("S1");
+		printchar("\033");
+		printchar("S1");
 	}
 	printchar(charBuf);
 	if(echo==0)
@@ -70,9 +59,92 @@ void print(const char *charBuf) {
 	}
 }
 
+/* convert integer to string */
+void    int_to_str(int nbr, char *res)
+{
+  int   div;
+  int   len;
+  int   i;
+
+  i = 0;
+  div = 1;
+  len = 1;
+  while (nbr / div >= 10){
+      div *= 10;
+      len++;
+  }
+
+  if (len > MAX_PAYLOAD_LEN) {
+    print("The length of integer exceed the maximum lenght. Please redefine MAX_PAYLOAD_LEN.");
+    len = MAX_PAYLOAD_LEN;
+    div = (MAX_PAYLOAD_LEN-1) * 10;
+  }
+
+  while (len) {
+      res[i++] = '0' + (nbr / div);
+      len--;
+      nbr %= div;
+      div /= 10;
+    }
+ 
+}  
+
+/* convert float to string */
+void    float_to_str(int integer, int decimal, char *res)
+{
+  int   div1, div2;
+  int   len1, len2;
+  int   i;
+
+  i = 0;
+  div1 = 1;
+  len1 = 1;
+  while (decimal / div1 >= 10){
+      div1 *= 10;
+      len1++;
+  }
+
+  if (len1 > MAX_PAYLOAD_LEN) {
+    print("The length of integer exceed the maximum lenght. Please redefine MAX_PAYLOAD_LEN.");
+    len1 = MAX_PAYLOAD_LEN;
+    div1 = (MAX_PAYLOAD_LEN-1) * 10;
+  }
+
+  while (len1) {
+      res[i++] = '0' + (decimal / div1);
+      len1--;
+      decimal %= div1;
+      div1 /= 10;
+    }
+
+  res[i++] = '.';
+
+  div2 = 1;
+  len2 = 1;
+  while (integer / div2 >= 10){
+      div2 *= 10;
+      len2++;
+  }  
+
+  if ((len1+len2) > MAX_PAYLOAD_LEN) {
+    print("The length of integer exceed the maximum lenght. Please redefine MAX_PAYLOAD_LEN.");
+    len2 = MAX_PAYLOAD_LEN - len1;
+    div2 = (len2-1) * 10;
+  }
+
+  while (len2) {
+      res[i++] = '0' + (integer / div2);
+      len2--;
+      integer %= div2;
+      div2 /= 10;
+    }
+ 
+}
 uint8_t print_int_basic(const int charBuf) {
-	char tmpstr1[1024];
-	sprintf(tmpstr1, "%d", charBuf);
+	char tmpstr1[MAX_PAYLOAD_LEN];
+	/* As sprintf break etimer thread, it will use int_to_str to convert integer to string*/ 
+	//sprintf(tmpstr1, "%d", charBuf);
+	int_to_str(charBuf, tmpstr1);
 	return (int)uart_tx_std_write(tmpstr1);
 }
 
@@ -90,16 +162,19 @@ void print_int(const int intBuf) {
 
 }
 
-
 void print_float(const float *charBuf) {
-	char tmpstr[20]="";
+	char tmpstr[MAX_PAYLOAD_LEN]="";
 	int integer, decimal;
 	break_float(*charBuf, &integer, &decimal, 3, 10);
-	sprintf(tmpstr, "%3d.%03d ", integer, decimal);
-	char newStr[strlen(tmpstr)];
-	print (strtrim(tmpstr,newStr));
+	/* As sprintf break etimer thread, it will use float_to_str to convert float to string*/
+	//sprintf(tmpstr, "%3d.%03d ", integer, decimal);
+	//char newStr[strlen(tmpstr)];
+	//print (strtrim(tmpstr,newStr));
+	float_to_str(integer, decimal, tmpstr);
+	print(tmpstr);
 	//return (int)uart_tx_std_write(floatToString(charBuf));
 }
+
 void break_float(float f, int *integer, int *decimal, int dlen, int base) {
 	*integer = (int)f;
 	f -= *integer;
@@ -125,6 +200,7 @@ int is_whitespace(char chr) {
 			return 0;
 	}
 }
+
 
 /*
  * Returns 0 if the command strings given as arguments do not match
@@ -214,7 +290,6 @@ void handle_command() {
 	}
 }
 
-
 /*
  * This function is called when a character is received from UART.
  * This function handles command line editing and echoing if in 
@@ -234,7 +309,8 @@ uint8_t receive_byte(uint8_t input, char *output_buffer) {
 		// Check if there is room in the command buffer
 		if( (cmd_buff.index + 1) % COMMAND_BUFFER_SIZE == cmd_buff.pos && echo) {
 			// echo mode
-			sprintf(output_buffer, text_cmd_buff_full);
+			//sprintf(output_buffer, text_cmd_buff_full);
+			strcpy(output_buffer, text_cmd_buff_full);
 			return strlen(text_cmd_buff_full);
 		} else if( (cmd_buff.index + 1) % COMMAND_BUFFER_SIZE == cmd_buff.pos && !echo) {
 			// non-echo mode
@@ -248,7 +324,8 @@ uint8_t receive_byte(uint8_t input, char *output_buffer) {
 		cmd_buff.history_index = cmd_buff.index;
 
 		if(echo) {
-			sprintf(output_buffer, "\r\n");
+			//sprintf(output_buffer, "\r\n");
+			strcpy(output_buffer, "\r\n");
 			return strlen(output_buffer);
 		} else {
 			return 0;
@@ -371,6 +448,3 @@ void unset_echo() {
 int is_echo() {
 	return echo;
 }
-
-
-
