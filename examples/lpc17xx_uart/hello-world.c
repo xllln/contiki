@@ -41,6 +41,7 @@
 
 #include <stdio.h> /* For printf() */
 #include "LPC17xx.h"
+#include "dev/leds.h"
 #include "comm.h"
 
 
@@ -76,6 +77,7 @@ void set_LOW(uint32_t led)
 	LPC_GPIO1->FIOPIN &= ~( 1 << led ); // make P1.led low
 }
 
+/*
 void blink_N(int n,int delay_ms)
 {
  for(i=0;i<n;i++)
@@ -85,7 +87,7 @@ void blink_N(int n,int delay_ms)
     set_LOW(29); // make P1.29 high
     delayMs(0, delay_ms);
  }
-}
+}*/
 
 
 /*
@@ -134,20 +136,18 @@ PROCESS_THREAD(hello_world_process, ev, data)
 {
   PROCESS_BEGIN();
 
-  set_LEDS();
+  static struct etimer et;
+  etimer_set(&et, CLOCK_SECOND);
 
-  //blink_N(3,2000);
-
-  
-  while (1) {
-    print("Hello World");
-    set_HIGH(29); // make P1.18 low
-    delayMs(0, 300);
-    set_LOW(29); // make P1.29 high
-    delayMs(0, 300);
-    //printf("Hello, world\n");
-  }
-  
+  while (1)
+    {
+ 	PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_TIMER);
+	if(etimer_expired(&et)){
+          leds_toggle(LEDS_YELLOW);
+	  print("Hello World");
+          etimer_reset(&et);
+	}
+    }
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/
